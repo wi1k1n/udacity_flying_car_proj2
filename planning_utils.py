@@ -186,6 +186,7 @@ def bresenham(p1, p2, grid):
                 # uncomment these two lines for conservative approach
                 # cells.append([i+1, j])
                 # cells.append([i, j+1])
+                if grid[int(i+1), int(j)] + grid[int(i), int(j+1)]: return True
                 d += dy
                 i += 1
                 d -= dx
@@ -213,6 +214,7 @@ def bresenham(p1, p2, grid):
                 # uncomment these two lines for conservative approach
                 # cells.append([i+1, j])
                 # cells.append([i, j+1])
+                if grid[int(i+1), int(j)] + grid[int(i), int(j+1)]: return True
                 d += dy
                 i += 1
                 d += dx
