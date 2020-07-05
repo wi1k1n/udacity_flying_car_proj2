@@ -27,7 +27,20 @@ You're reading it! Below I describe how I addressed each rubric point and where 
 ### Explain the Starter Code
 
 #### 1. Explain the functionality of what's provided in `motion_planning.py` and `planning_utils.py`
-These scripts contain a basic planning implementation that includes...
+_These scripts contain a basic planning implementation that includes..._
+
+`motion_planning.py` is the main script, which is mostly the same as `backyard_flyer.py` from Project #1.
+The main difference is including the PLANNING phase between ARMED and TAKEOFF phases.
+During the planning (in the `plan_path()` function) the grid is created from the map informaion (_colliders.csv_)
+and then waypoints are created using A* algorithm on grid with example start and goal locations.
+The list of waypoints is later sent to simulator and drone continues its mission.
+
+`planning_utils.py` is mainly a definition of helpful functions that were developed in the exercises and consists of 2 main functions:
+* `create_grid()` - takes 2D configuration space (loaded from _colliders.csv_) and returns grid with feasible and infeasible cells.
+* `a_star()` - the implementation of A* algorithm (on grid), which finds shortest path from __start__ to __goal__ locations.
+
+`valid_actions()` and `heuristics()` are simply used in `a_star()` for getting all possible actions (represented by `class Action`)
+at current node and calculating `h` term at current node.  
 
 And here's a lovely image of my results (ok this image has nothing to do with it, but it's a nice example of how to include images in your writeup!)
 ![Top Down View](./misc/high_up.png)
