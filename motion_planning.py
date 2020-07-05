@@ -30,7 +30,11 @@ class MotionPlanning(Drone):
         super().__init__(connection)
 
         self.v = visdom.Visdom()
-        assert self.v.check_connection()
+        if self.v.check_connection():
+            print("Connected to visdom")
+            self.visdom = True
+        else:
+            print("Connection to visdom failed!")
 
         self.target_position = np.array([0.0, 0.0, 0.0])
         self.waypoints = []
@@ -45,23 +49,24 @@ class MotionPlanning(Drone):
         self.register_callback(MsgID.STATE, self.state_callback)
 
 
-        # Plot NE
-        ne = np.array([self.local_position[0], self.local_position[1]]).reshape(1, -1)
-        self.ne_plot = self.v.scatter(ne, opts=dict(
-            title="Local position (north, east)",
-            xlabel='North',
-            ylabel='East'
-        ))
-        # Plot D
-        d = np.array([self.local_position[2]])
-        self.t = 0
-        self.d_plot = self.v.line(d, X=np.array([self.t]), opts=dict(
-            title="Altitude (meters)",
-            xlabel='Timestep',
-            ylabel='Down'
-        ))
-        self.register_callback(MsgID.LOCAL_POSITION, self.update_ne_plot)
-        self.register_callback(MsgID.LOCAL_POSITION, self.update_d_plot)
+        if self.visdom:
+            # Plot NE
+            ne = np.array([self.local_position[0], self.local_position[1]]).reshape(1, -1)
+            self.ne_plot = self.v.scatter(ne, opts=dict(
+                title="Local position (north, east)",
+                xlabel='North',
+                ylabel='East'
+            ))
+            # Plot D
+            d = np.array([self.local_position[2]])
+            self.t = 0
+            self.d_plot = self.v.line(d, X=np.array([self.t]), opts=dict(
+                title="Altitude (meters)",
+                xlabel='Timestep',
+                ylabel='Down'
+            ))
+            self.register_callback(MsgID.LOCAL_POSITION, self.update_ne_plot)
+            self.register_callback(MsgID.LOCAL_POSITION, self.update_d_plot)
 
     def update_ne_plot(self):
         ne = np.array([self.local_position[0], self.local_position[1]]).reshape(1, -1)
