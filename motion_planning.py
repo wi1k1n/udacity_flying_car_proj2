@@ -29,6 +29,7 @@ class MotionPlanning(Drone):
     def __init__(self, connection):
         super().__init__(connection)
 
+        self.visdom = False
         self.v = visdom.Visdom()
         if self.v.check_connection():
             print("Connected to visdom")
