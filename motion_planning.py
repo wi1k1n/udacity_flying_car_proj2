@@ -4,7 +4,7 @@ from enum import Enum, auto
 import numpy as np
 import matplotlib.pyplot as plt
 
-from planning_utils import a_star, heuristic, create_grid, prune_path, create_graph
+from planning_utils import a_star, heuristic, create_grid, prune_path, create_graph, create_grid_and_edges
 from sampling import Sampler
 import visdom
 
@@ -22,8 +22,6 @@ class States(Enum):
     LANDING = auto()
     DISARMING = auto()
     PLANNING = auto()
-
-
 class MotionPlanning(Drone):
 
     def __init__(self, connection):
@@ -68,11 +66,9 @@ class MotionPlanning(Drone):
             ))
             self.register_callback(MsgID.LOCAL_POSITION, self.update_ne_plot)
             self.register_callback(MsgID.LOCAL_POSITION, self.update_d_plot)
-
     def update_ne_plot(self):
         ne = np.array([self.local_position[0], self.local_position[1]]).reshape(1, -1)
         self.v.scatter(ne, win=self.ne_plot, update='append')
-
     def update_d_plot(self):
         d = np.array([self.local_position[2]])
         # update timestep
@@ -90,13 +86,11 @@ class MotionPlanning(Drone):
                 else:
                     if np.linalg.norm(self.local_velocity[0:2]) < 1.0:
                         self.landing_transition()
-
     def velocity_callback(self):
         if self.flight_state == States.LANDING:
             if self.global_position[2] - self.global_home[2] < 0.1:
                 if abs(self.local_position[2]) < 0.01:
                     self.disarming_transition()
-
     def state_callback(self):
         if self.in_mission:
             if self.flight_state == States.MANUAL:
@@ -115,36 +109,30 @@ class MotionPlanning(Drone):
         print("arming transition")
         self.arm()
         self.take_control()
-
     def takeoff_transition(self):
         self.flight_state = States.TAKEOFF
         print("takeoff transition")
         self.takeoff(self.target_position[2])
-
     def waypoint_transition(self):
         self.flight_state = States.WAYPOINT
         print("waypoint transition")
         self.target_position = self.waypoints.pop(0)
         print('target position', self.target_position)
         self.cmd_position(self.target_position[0], self.target_position[1], self.target_position[2], self.target_position[3])
-
     def landing_transition(self):
         self.flight_state = States.LANDING
         print("landing transition")
         self.land()
-
     def disarming_transition(self):
         self.flight_state = States.DISARMING
         print("disarm transition")
         self.disarm()
         self.release_control()
-
     def manual_transition(self):
         self.flight_state = States.MANUAL
         print("manual transition")
         self.stop()
         self.in_mission = False
-
     def send_waypoints(self):
         print("Sending waypoints to simulator ...")
         data = msgpack.dumps(self.waypoints)
@@ -190,36 +178,30 @@ class MotionPlanning(Drone):
         grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
         print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
 
+        # grid, edges = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        # print('Voronoi {0} edges created'.format(len(edges)))
+
         # Define starting point on the grid as current location
         grid_start = (-north_offset+int(curLocal[0]), -east_offset+int(curLocal[1]))
 
         # Set goal as some arbitrary position on the grid
         grid_goal = (-north_offset + 64, -east_offset + 85)
-        # grid_goal = (290, 720)
+        grid_goal = (290, 720)
         # grid_goal = None
         # while not grid_goal:
         #     i, j = random.randint(0, grid.shape[0]), random.randint(0, grid.shape[1])
         #     if not grid[i, j]: grid_goal = (i, j)
         # TODO: change this to lat/lon position
 
-        # fig = plt.figure()
 
-        # plt.imshow(grid, cmap='Greys', origin='lower')
+        # plt.imshow(grid, origin='lower', cmap='Greys')
+        # for e in edges:  # Stepping through each edge
+        #     plt.plot([e[0][1], e[1][1]], [e[0][0], e[1][0]], 'b-')
+        # plt.xlabel('EAST')
+        # plt.ylabel('NORTH')
+        # plt.show()
 
-        # nmin = np.min(data[:, 0])
-        # emin = np.min(data[:, 1])
 
-        # # draw edges
-        # for (n1, n2) in g.edges:
-        #     plt.plot([n1[1] - emin, n2[1] - emin], [n1[0] - nmin, n2[0] - nmin], 'black', alpha=0.5)
-        #
-        # # draw all nodes
-        # for n1 in nodes:
-        #     plt.scatter(n1[1] - emin, n1[0] - nmin, c='blue')
-        #
-        # # draw connected nodes
-        # for n1 in g.nodes:
-        #     plt.scatter(n1[1] - emin, n1[0] - nmin, c='red')
 
         # Run A* to find a path from start to goal
         # or move to a different search space such as a graph (not done here)
@@ -228,16 +210,14 @@ class MotionPlanning(Drone):
         path, _ = a_star(grid, heuristic, grid_start, grid_goal)
         print('Found path of {0} waypoints in {1}'.format(len(path), time.time() - timer))
 
+        # plt.imshow(grid, cmap='Greys', origin='lower')
         # plt.plot(grid_start[1], grid_start[0], 'x')
         # plt.plot(grid_goal[1], grid_goal[0], 'x')
-        #
         # if path is not None:
         #     pp = np.array(path)
         #     plt.plot(pp[:, 1], pp[:, 0], 'g')
-        #
         # plt.xlabel('NORTH')
         # plt.ylabel('EAST')
-        #
         # plt.show()
 
         # TODO: prune path to minimize number of waypoints
@@ -251,7 +231,7 @@ class MotionPlanning(Drone):
         # Set self.waypoints
         self.waypoints = waypoints
         # TODO: send waypoints to sim (this is just for visualization of waypoints)
-        # self.send_waypoints()
+        self.send_waypoints()
 
     def start(self):
         # self.start_log("Logs", "NavLog.txt")
@@ -260,11 +240,10 @@ class MotionPlanning(Drone):
         self.connection.start()
 
         # Only required if they do threaded
-        # while self.in_mission:
-        #    pass
+        while self.in_mission:
+           pass
 
         # self.stop_log()
-
 
 if __name__ == "__main__":
     np.random.seed(123)
@@ -275,7 +254,7 @@ if __name__ == "__main__":
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
 
-    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60)
+    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60, threaded=True)
     drone = MotionPlanning(conn)
     time.sleep(1)
 
