@@ -207,18 +207,18 @@ class MotionPlanning(Drone):
         # or move to a different search space such as a graph (not done here)
         print('Local Start and Goal: ', grid_start, grid_goal)
         timer = time.time()
-        path, _ = a_star(grid, heuristic, grid_start, grid_goal)
+        path, _ = a_star(grid, heuristic, grid_start, grid_goal, log_progress_each=5)
         print('Found path of {0} waypoints in {1}'.format(len(path), time.time() - timer))
 
-        # plt.imshow(grid, cmap='Greys', origin='lower')
-        # plt.plot(grid_start[1], grid_start[0], 'x')
-        # plt.plot(grid_goal[1], grid_goal[0], 'x')
-        # if path is not None:
-        #     pp = np.array(path)
-        #     plt.plot(pp[:, 1], pp[:, 0], 'g')
-        # plt.xlabel('NORTH')
-        # plt.ylabel('EAST')
-        # plt.show()
+        plt.imshow(grid, cmap='Greys', origin='lower')
+        plt.plot(grid_start[1], grid_start[0], 'x')
+        plt.plot(grid_goal[1], grid_goal[0], 'x')
+        if path is not None:
+            pp = np.array(path)
+            plt.plot(pp[:, 1], pp[:, 0], 'g')
+        plt.xlabel('NORTH')
+        plt.ylabel('EAST')
+        plt.show()
 
         # TODO: prune path to minimize number of waypoints
         # TODO (if you're feeling ambitious): Try a different approach altogether!
@@ -240,8 +240,8 @@ class MotionPlanning(Drone):
         self.connection.start()
 
         # Only required if they do threaded
-        while self.in_mission:
-           pass
+        # while self.in_mission:
+        #    pass
 
         # self.stop_log()
 
@@ -254,7 +254,7 @@ if __name__ == "__main__":
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
 
-    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60, threaded=True)
+    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60)
     drone = MotionPlanning(conn)
     time.sleep(1)
 

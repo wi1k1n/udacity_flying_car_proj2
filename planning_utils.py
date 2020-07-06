@@ -6,6 +6,7 @@ import networkx as nx
 import numpy.linalg as LA
 from sklearn.neighbors import KDTree
 from scipy.spatial import Voronoi, voronoi_plot_2d
+import time
 
 
 def create_grid(data, drone_altitude, safety_distance):
@@ -110,10 +111,14 @@ class Action(Enum):
     to the current grid position. The third and final value
     is the cost of performing the action.
     """
-    LEFT = (0, -1, 1)
-    RIGHT = (0, 1, 1)
-    UP = (-1, 0, 1)
-    DOWN = (1, 0, 1)
+    LEFT =      (0, -1, 1)
+    LEFTUP =    (-1, -1, np.sqrt(2))
+    UP =        (-1, 0, 1)
+    UPRIGHT =   (-1, 1, np.sqrt(2))
+    RIGHT =     (0, 1, 1)
+    RIGHTDOWN = (1, 1, np.sqrt(2))
+    DOWN =      (1, 0, 1)
+    DOWNLEFT =  (1, -1, np.sqrt(2))
 
     def __str__(self):
         if self == self.LEFT:
@@ -136,26 +141,33 @@ def valid_actions(grid, current_node):
     """
     Returns a list of valid actions given a grid and current node.
     """
-    valid = [Action.UP, Action.LEFT, Action.RIGHT, Action.DOWN]
+    valid = [Action.LEFT,
+             Action.LEFTUP,
+             Action.UP,
+             Action.UPRIGHT,
+             Action.RIGHT,
+             Action.RIGHTDOWN,
+             Action.DOWN,
+             Action.DOWNLEFT]
     n, m = grid.shape[0] - 1, grid.shape[1] - 1
     x, y = current_node
 
     # check if the node is off the grid or
     # it's an obstacle
 
-    if x - 1 < 0 or grid[x - 1, y] == 1:
-        valid.remove(Action.UP)
-    if x + 1 > n or grid[x + 1, y] == 1:
-        valid.remove(Action.DOWN)
-    if y - 1 < 0 or grid[x, y - 1] == 1:
-        valid.remove(Action.LEFT)
-    if y + 1 > m or grid[x, y + 1] == 1:
-        valid.remove(Action.RIGHT)
+    if y - 1 < 0 or grid[x, y - 1] == 1: valid.remove(Action.LEFT)
+    if x - 1 < 0 or y - 1 < 0 or grid[x - 1, y - 1] == 1: valid.remove(Action.LEFTUP)
+    if x - 1 < 0 or grid[x - 1, y] == 1: valid.remove(Action.UP)
+    if x - 1 < 0 or y + 1 > m or grid[x - 1, y + 1] == 1: valid.remove(Action.UPRIGHT)
+    if y + 1 > m or grid[x, y + 1] == 1: valid.remove(Action.RIGHT)
+    if x + 1 > n or y + 1 > m or grid[x + 1, y + 1] == 1: valid.remove(Action.RIGHTDOWN)
+    if x + 1 > n or grid[x + 1, y] == 1: valid.remove(Action.DOWN)
+    if x + 1 > n or y - 1 < 0 or grid[x + 1, y - 1] == 1: valid.remove(Action.DOWNLEFT)
 
     return valid
 def heuristic(position, goal_position):
     return np.linalg.norm(np.array(position) - np.array(goal_position))
-def a_star(grid, h, start, goal):
+def a_star(grid, h, start, goal, log_progress_each=None):
     path = []
     path_cost = 0
     queue = PriorityQueue()
@@ -167,9 +179,13 @@ def a_star(grid, h, start, goal):
     found = False
 
     visitedCount = 0
+    startTime = time.time()
     while not queue.empty():
         item = queue.get()
         current_node = item[1]
+        if log_progress_each and time.time() - startTime > log_progress_each:
+            print('L2 to goal = {0}. Visited {1} cells.'.format(heuristic(current_node, goal), len(visited)))
+            startTime = time.time()
         if current_node == start:
             current_cost = 0.0
         else:
