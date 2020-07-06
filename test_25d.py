@@ -2,6 +2,7 @@ import numpy as np, time, random
 from planning_utils import a_star, heuristic, create_grid, prune_path
 from planning_utils import create_graph, create_grid_and_edges, closest_point, a_star_graph
 import networkx as nx
+from udacidrone.frame_utils import global_to_local
 import matplotlib.pyplot as plt
 plt.rcParams['figure.figsize'] = 25, 25
 
@@ -20,10 +21,24 @@ grid_original_shape = grid.shape
 print('Grids created')
 
 grid_start = (-north_offset, -east_offset)
-grid_start = (450-north_offset, -158-east_offset)
-grid_goal = (350-north_offset, -190-east_offset)
+# grid_start = (450-north_offset, -158-east_offset)
+# grid_goal = (350-north_offset, -190-east_offset)
 # grid_goal = (290, 720)
+
+goal =          (-122.392210, 37.793520)
+global_home =   (-122.397450, 37.792480, 0)
+target_global = global_to_local((goal[0], goal[1], TARGET_ALTITUDE), global_home)
+grid_goal = (-north_offset + int(target_global[0]), -east_offset + int(target_global[1]))
 print('Path: {0} -> {1}'.format(grid_start, grid_goal))
+
+# plt.figure()
+# plt.imshow(grid, origin='lower', cmap='Greys')
+# plt.plot((grid_start[1], grid_goal[1]), (grid_start[0], grid_goal[0]), 'g', linewidth=3)
+# plt.plot(grid_start[1], grid_start[0], 'go')
+# plt.plot(grid_goal[1], grid_goal[0], 'go')
+# plt.xlabel('EAST', fontsize=20)
+# plt.ylabel('NORTH', fontsize=20)
+# plt.show()
 
 # grid_show_padding = 100
 # grid_mins = (min(grid_start[0], grid_goal[0]), min(grid_start[1], grid_goal[1]))
@@ -113,10 +128,10 @@ for iteration in range(1):
         plt.plot([e[0][1], e[1][1]], [e[0][0], e[1][0]], 'b-')
     if path is not None:
         pp = np.array(path)
-        plt.plot(pp[:, 1], pp[:, 0], 'o', color='r')
-        plt.plot(pp[:, 1], pp[:, 0], 'g', linewidth=3)
-    plt.plot(grid_start[1], grid_start[0], 'gx')
-    plt.plot(grid_goal[1], grid_goal[0], 'gx')
+        plt.plot(pp[:, 1], pp[:, 0], 'g', linewidth=6)
+        plt.plot(pp[:, 1], pp[:, 0], 'o', color='r', markersize=20)
+    plt.plot(grid_start[1], grid_start[0], 'gx', markersize=20)
+    plt.plot(grid_goal[1], grid_goal[0], 'gx', markersize=20)
     plt.xlabel('EAST', fontsize=20)
     plt.ylabel('NORTH', fontsize=20)
     plt.show()

@@ -27,7 +27,7 @@ class States(Enum):
     PLANNING = auto()
 class MotionPlanning(Drone):
 
-    def __init__(self, connection):
+    def __init__(self, connection, goal=None):
         super().__init__(connection)
 
         self.visdom = False
@@ -41,6 +41,7 @@ class MotionPlanning(Drone):
         self.target_position = np.array([0.0, 0.0, 0.0])
         self.waypoints = []
         self.in_mission = True
+        self.goal = goal
 
         # initial state
         self.flight_state = States.MANUAL
@@ -141,9 +142,9 @@ class MotionPlanning(Drone):
     def manual_transition(self):
         self.flight_state = States.MANUAL
         print("manual transition")
-        return
-        self.stop()
-        self.in_mission = False
+        if self.goal is not None:  # The goal of mission was specified at start
+            self.stop()
+            self.in_mission = False
     def send_waypoints(self):
         print("Sending waypoints to simulator ...")
         data = msgpack.dumps(self.waypoints)
@@ -154,8 +155,6 @@ class MotionPlanning(Drone):
         print("Searching for a path ...")
         TARGET_ALTITUDE = 5
         SAFETY_DISTANCE = 5
-        SAFETY_DISTANCE_WIDE = 8    # safety distance to run A* on
-        SAFETY_DISTANCE_NARROW = 5  # safety distance for prunning
 
         self.target_position[2] = TARGET_ALTITUDE
 
@@ -194,11 +193,14 @@ class MotionPlanning(Drone):
         # Set goal as some arbitrary position on the grid
         # grid_goal = (-offset[0] + 64, -offset[1] + 85)
         # grid_goal = (290, 720)
-        grid_goal = None
-        while not grid_goal:
-            i, j = random.randint(0, grid.shape[0]-1), random.randint(0, grid.shape[1]-1)
-            if not grid[i, j]: grid_goal = (i, j)
-        # TODO: change this to lat/lon position
+        if self.goal is None:
+            grid_goal = None
+            while not grid_goal:
+                i, j = random.randint(0, grid.shape[0]-1), random.randint(0, grid.shape[1]-1)
+                if not grid[i, j]: grid_goal = (i, j)
+        else:
+            target_global = global_to_local((self.goal[1], self.goal[0], TARGET_ALTITUDE), self.global_home)
+            grid_goal = (-offset[0] + int(target_global[0]), -offset[1] + int(target_global[1]))
         print('Path: {0} -> {1}'.format(grid_start, grid_goal))
 
         graph_start = closest_point(G, grid_start)
@@ -247,13 +249,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=5760, help='Port number')
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
-    parser.add_argument('--seed', type=int, default=random.randint(0, sys.maxsize), help='Seed for random, to make result reproducable')
+    parser.add_argument('--goal', type=str, default=None, help='Goal position (lat, lon) in format of "12.345678,-123.456789"')
+    parser.add_argument('--seed', type=int, default=random.randint(0, 2**32-1), help='Seed for random, to make result reproducable')
     args = parser.parse_args()
+
+    goal = None
+    if args.goal:
+        ns = re.findall("-*\d+\.\d+", args.goal)
+        assert len(ns) == 2, 'Could not parse lat & lon from --goal argument. Check that the format of (lat, lon) position is "12.345678,-123.456789".'
+        goal = float(ns[0]), float(ns[1])
 
     np.random.seed(args.seed)
     random.seed(args.seed)
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=600)
-    drone = MotionPlanning(conn)
+    drone = MotionPlanning(conn, goal)
     time.sleep(1)
 
     drone.start()
