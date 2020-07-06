@@ -7,6 +7,7 @@ import numpy.linalg as LA
 from sklearn.neighbors import KDTree
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import time
+from bresenham import bresenham
 
 
 def create_grid(data, drone_altitude, safety_distance):
@@ -225,96 +226,33 @@ def a_star(grid, h, start, goal, log_progress_each=None):
     return path[::-1], path_cost
 
 
-def bresenham(p1, p2, grid):
-    """
-    Bresenham algorithm, as implemented in exercises (extended for all possible p1 & p2 locations)
-    Returns True, if line is in collision with grid, False - if not, None - if p1 & p2 are invalid
-    """
-    x1, y1 = p1
-    x2, y2 = p2
+def collinearity_int(p1, p2, p3):
+    # Calculate the determinant of the matrix using integer arithmetic
+    return p1[0]*(p2[1] - p3[1]) + p2[0]*(p3[1] - p1[1]) + p3[0]*(p1[1] - p2[1]) == 0
 
-    if x1 < 0 or x1 >= grid.shape[0] or y1 < 0 or y1 >= grid.shape[1]: return None
-    if x2 < 0 or x2 >= grid.shape[0] or y2 < 0 or y2 >= grid.shape[1]: return None
-
-    dx, dy = x2 - x1, y2 - y1
-
-    if np.sign(dx * dy) > 0:
-        if dx < 0:
-            x1, x2 = x2, x1
-            y1, y2 = y2, y1
-            dx = -dx
-            dy = -dy
-
-        d = 0
-        i = x1
-        j = y1
-
-        while i < x2 and j < y2:
-            if i < 0 or i >= grid.shape[0] or j < 0 or j >= grid.shape[1]: return None
-            if grid[int(i), int(j)]: return True
-            if d < dx - dy:
-                d += dy
-                i += 1
-            elif d == dx - dy:
-                # uncomment these two lines for conservative approach
-                # cells.append([i+1, j])
-                # cells.append([i, j+1])
-                if grid[int(i+1), int(j)] + grid[int(i), int(j+1)]: return True
-                d += dy
-                i += 1
-                d -= dx
-                j += 1
-            else:
-                d -= dx
-                j += 1
-    else:
-        if dy < 0:
-            x1, x2 = x2, x1
-            y1, y2 = y2, y1
-            dx = -dx
-            dy = -dy
-
-        d = 0
-        i = x1
-        j = y1
-
-        while i > x2 and j < y2:
-            if i < 0 or i >= grid.shape[0] or j < 0 or j >= grid.shape[1]: return None
-            if grid[int(i), int(j)]: return True
-            if d > dx - dy:
-                d += dy
-                i += 1
-            elif d == dx - dy:
-                # uncomment these two lines for conservative approach
-                # cells.append([i+1, j])
-                # cells.append([i, j+1])
-                if grid[int(i+1), int(j)] + grid[int(i), int(j+1)]: return True
-                d += dy
-                i += 1
-                d += dx
-                j += 1
-            else:
-                d += dx
-                j += 1
-    return False
 def prune_path(path, grid):
     """
     Takes path (list of wps) and grid (to check if edge collides with obstacle) and returnes pruned path.
     """
     if path is None: return None
+    if len(path) < 3:
+        print('Path consists of less than 3 waypoint!!')
+        return path
 
     pruned_path = [path[0]]
-    cind = 1
-    while cind < len(path):
-        lwp = pruned_path[-1]
-        cwp = path[cind]
-        b = bresenham(lwp, cwp, grid)
-        # print(lwp, ' -> ', cwp, ' = ', b)
-        if b:
-            if path[cind - 1] == path[-1]: pruned_path.append(path[cind])
-            else: pruned_path.append(path[cind - 1])
+    cind = 2  # start checking from ndd waypoint (because 0th and 1st form line segment -> no need to check)
+    while cind < len(path) - 1:
+        pwp = pruned_path[-1]  # last stored waypoint
+        cwp = path[cind]  # current waypoint
+        collision = False
+        for cell in bresenham(pwp[0], pwp[1], cwp[0], cwp[1]):
+            if grid[cell[0], cell[1]]:
+                collision = True
+                break
+        if collision:
+            pruned_path.append(path[cind - 1])
         cind += 1
-    if len(pruned_path) == 1: pruned_path.append(path[-1])
+    pruned_path.append(path[-1])
     return pruned_path
 def can_connect(n1, n2, polygons):
     l = LineString([n1, n2])

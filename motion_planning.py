@@ -142,7 +142,8 @@ class MotionPlanning(Drone):
         self.flight_state = States.PLANNING
         print("Searching for a path ...")
         TARGET_ALTITUDE = 5
-        SAFETY_DISTANCE = 5
+        SAFETY_DISTANCE_WIDE = 8    # safety distance to run A* on
+        SAFETY_DISTANCE_NARROW = 5  # safety distance for prunning
 
         self.target_position[2] = TARGET_ALTITUDE
 
@@ -175,7 +176,8 @@ class MotionPlanning(Drone):
         # g = create_graph(nodes, 10, polygons)
         
         # Define a grid for a particular altitude and safety margin around obstacles
-        grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE_WIDE)
+        grid_narrow, _, _ = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE_NARROW)
         print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
 
         # grid, edges = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
@@ -210,20 +212,20 @@ class MotionPlanning(Drone):
         path, _ = a_star(grid, heuristic, grid_start, grid_goal, log_progress_each=5)
         print('Found path of {0} waypoints in {1}'.format(len(path), time.time() - timer))
 
-        plt.imshow(grid, cmap='Greys', origin='lower')
-        plt.plot(grid_start[1], grid_start[0], 'x')
-        plt.plot(grid_goal[1], grid_goal[0], 'x')
-        if path is not None:
-            pp = np.array(path)
-            plt.plot(pp[:, 1], pp[:, 0], 'g')
-        plt.xlabel('NORTH')
-        plt.ylabel('EAST')
-        plt.show()
+        # plt.imshow(grid, cmap='Greys', origin='lower')
+        # plt.plot(grid_start[1], grid_start[0], 'x')
+        # plt.plot(grid_goal[1], grid_goal[0], 'x')
+        # if path is not None:
+        #     pp = np.array(path)
+        #     plt.plot(pp[:, 1], pp[:, 0], 'g')
+        # plt.xlabel('NORTH')
+        # plt.ylabel('EAST')
+        # plt.show()
 
         # TODO: prune path to minimize number of waypoints
         # TODO (if you're feeling ambitious): Try a different approach altogether!
         timer = time.time()
-        path = prune_path(path, grid)
+        path = prune_path(path, grid_narrow)
         print('Pruned path to {0} waypoints in {1}'.format(len(path), time.time() - timer))
 
         # Convert path to waypoints
@@ -254,7 +256,7 @@ if __name__ == "__main__":
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
 
-    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60)
+    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=600)
     drone = MotionPlanning(conn)
     time.sleep(1)
 
