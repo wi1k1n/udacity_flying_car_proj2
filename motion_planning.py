@@ -1,10 +1,13 @@
 import argparse, re, random, time
-import msgpack
+import sys, math
+
+import msgpack, networkx as nx
 from enum import Enum, auto
 import numpy as np
 import matplotlib.pyplot as plt
 
-from planning_utils import a_star, heuristic, create_grid, prune_path, create_graph, create_grid_and_edges
+from planning_utils import a_star, heuristic, create_grid, prune_path, a_star_graph, \
+                            create_graph, create_grid_and_edges, closest_point
 from sampling import Sampler
 import visdom
 
@@ -88,8 +91,8 @@ class MotionPlanning(Drone):
                         self.landing_transition()
     def velocity_callback(self):
         if self.flight_state == States.LANDING:
-            if self.global_position[2] - self.global_home[2] < 0.1:
-                if abs(self.local_position[2]) < 0.01:
+            if self.global_position[2] - self.global_home[2] < 0.2:
+                if abs(self.local_position[2]) < 0.05:
                     self.disarming_transition()
     def state_callback(self):
         if self.in_mission:
@@ -116,9 +119,16 @@ class MotionPlanning(Drone):
     def waypoint_transition(self):
         self.flight_state = States.WAYPOINT
         print("waypoint transition")
-        self.target_position = self.waypoints.pop(0)
-        print('target position', self.target_position)
-        self.cmd_position(self.target_position[0], self.target_position[1], self.target_position[2], self.target_position[3])
+        if len(self.waypoints) > 0:
+            self.target_position = self.waypoints.pop(0)
+            lp, tp = self.local_position, self.target_position
+            heading = math.atan2(tp[1]-lp[1], tp[0]-lp[0])
+            self.target_position[3] = heading
+            print('target position', self.target_position)
+            self.cmd_position(*self.target_position)
+        else:
+            print('no waypoints found. landing')
+            self.landing_transition()
     def landing_transition(self):
         self.flight_state = States.LANDING
         print("landing transition")
@@ -131,6 +141,7 @@ class MotionPlanning(Drone):
     def manual_transition(self):
         self.flight_state = States.MANUAL
         print("manual transition")
+        return
         self.stop()
         self.in_mission = False
     def send_waypoints(self):
@@ -142,12 +153,13 @@ class MotionPlanning(Drone):
         self.flight_state = States.PLANNING
         print("Searching for a path ...")
         TARGET_ALTITUDE = 5
+        SAFETY_DISTANCE = 5
         SAFETY_DISTANCE_WIDE = 8    # safety distance to run A* on
         SAFETY_DISTANCE_NARROW = 5  # safety distance for prunning
 
         self.target_position[2] = TARGET_ALTITUDE
 
-        # TODO: read lat0, lon0 from colliders into floating point values
+        # Read lat0, lon0 from colliders into floating point values
         lat0 = lon0 = None
         with open('colliders.csv') as f:
             ns = re.findall("-*\d+\.\d+", f.readline())
@@ -164,75 +176,59 @@ class MotionPlanning(Drone):
 
         # Read in obstacle map
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
-
-        # # ## Creating probabilistic roadmap
-        # # Create sampler
-        # sampler = Sampler(data)
-        # polygons = sampler._polygons
-        #
-        # nodes = sampler.sample(200)
-        # print('Created {0} samples'.format(len(nodes)))
-        #
-        # g = create_graph(nodes, 10, polygons)
         
         # Define a grid for a particular altitude and safety margin around obstacles
-        grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE_WIDE)
-        grid_narrow, _, _ = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE_NARROW)
-        print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
+        timer = time.time()
+        grid, offset, edges = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        print('Voronoi {0} edges created in {1}s'.format(len(edges), time.time() - timer))
+        print('Offsets: north = {0} east = {1}'.format(offset[0], offset[1]))
 
-        # grid, edges = create_grid_and_edges(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
-        # print('Voronoi {0} edges created'.format(len(edges)))
+        G = nx.Graph()
+        for e in edges:
+            G.add_edge(tuple(e[0]), tuple(e[1]), weight=np.linalg.norm(np.array(e[1]) - np.array(e[0])))
+        print('Graph created')
 
         # Define starting point on the grid as current location
-        grid_start = (-north_offset+int(curLocal[0]), -east_offset+int(curLocal[1]))
+        grid_start = (-offset[0] + int(curLocal[0]), -offset[1] + int(curLocal[1]))
 
         # Set goal as some arbitrary position on the grid
-        grid_goal = (-north_offset + 64, -east_offset + 85)
-        grid_goal = (290, 720)
-        # grid_goal = None
-        # while not grid_goal:
-        #     i, j = random.randint(0, grid.shape[0]), random.randint(0, grid.shape[1])
-        #     if not grid[i, j]: grid_goal = (i, j)
+        # grid_goal = (-offset[0] + 64, -offset[1] + 85)
+        # grid_goal = (290, 720)
+        grid_goal = None
+        while not grid_goal:
+            i, j = random.randint(0, grid.shape[0]-1), random.randint(0, grid.shape[1]-1)
+            if not grid[i, j]: grid_goal = (i, j)
         # TODO: change this to lat/lon position
+        print('Path: {0} -> {1}'.format(grid_start, grid_goal))
 
+        graph_start = closest_point(G, grid_start)
+        graph_goal = closest_point(G, grid_goal)
+        print('Graph path: {0} -> {1}'.format((graph_start[0]-offset[0], graph_start[1]-offset[1]), (graph_goal[0]-offset[0], graph_goal[1]-offset[1])))
 
-        # plt.imshow(grid, origin='lower', cmap='Greys')
-        # for e in edges:  # Stepping through each edge
-        #     plt.plot([e[0][1], e[1][1]], [e[0][0], e[1][0]], 'b-')
-        # plt.xlabel('EAST')
-        # plt.ylabel('NORTH')
-        # plt.show()
-
-
-
-        # Run A* to find a path from start to goal
-        # or move to a different search space such as a graph (not done here)
-        print('Local Start and Goal: ', grid_start, grid_goal)
         timer = time.time()
-        path, _ = a_star(grid, heuristic, grid_start, grid_goal, log_progress_each=5)
-        print('Found path of {0} waypoints in {1}'.format(len(path), time.time() - timer))
+        path, cost = a_star_graph(G, graph_start, graph_goal)
+        if path is None:
+            print('Could not find path')
+            return
+        print('Found path on graph of {0} waypoints in {1}s'.format(len(path), time.time() - timer))
 
-        # plt.imshow(grid, cmap='Greys', origin='lower')
-        # plt.plot(grid_start[1], grid_start[0], 'x')
-        # plt.plot(grid_goal[1], grid_goal[0], 'x')
-        # if path is not None:
-        #     pp = np.array(path)
-        #     plt.plot(pp[:, 1], pp[:, 0], 'g')
-        # plt.xlabel('NORTH')
-        # plt.ylabel('EAST')
-        # plt.show()
+        # Add to path exact (non-voronoi) start&goal waypoints
+        path = [(int(p[0]), int(p[1])) for p in path]
+        path.insert(0, grid_start)
+        path.insert(len(path), grid_goal)
 
-        # TODO: prune path to minimize number of waypoints
-        # TODO (if you're feeling ambitious): Try a different approach altogether!
+        # Prune the path on grid twice
         timer = time.time()
-        path = prune_path(path, grid_narrow)
-        print('Pruned path to {0} waypoints in {1}'.format(len(path), time.time() - timer))
+        pruned_path = prune_path(path, grid)
+        pruned_path = prune_path(pruned_path, grid)
+        print('Pruned path from {0} to {1} waypoints in {2}s'.format(len(path), len(pruned_path), time.time() - timer))
+        path = pruned_path
 
         # Convert path to waypoints
-        waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
+        waypoints = [[p[0] + offset[0], p[1] + offset[1], TARGET_ALTITUDE, 0] for p in path]
+
         # Set self.waypoints
         self.waypoints = waypoints
-        # TODO: send waypoints to sim (this is just for visualization of waypoints)
         self.send_waypoints()
 
     def start(self):
@@ -248,14 +244,14 @@ class MotionPlanning(Drone):
         # self.stop_log()
 
 if __name__ == "__main__":
-    np.random.seed(123)
-    random.seed(123)
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=5760, help='Port number')
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
+    parser.add_argument('--seed', type=int, default=random.randint(0, sys.maxsize), help='Seed for random, to make result reproducable')
     args = parser.parse_args()
 
+    np.random.seed(args.seed)
+    random.seed(args.seed)
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=600)
     drone = MotionPlanning(conn)
     time.sleep(1)
